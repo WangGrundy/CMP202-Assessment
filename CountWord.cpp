@@ -22,7 +22,7 @@ bool timerStarted = false;
 the_amp_clock::time_point start1;
 the_amp_clock::time_point end1;
 
-std::atomic_int elementsDoneAtomic = 0;
+std::atomic_int elementsDoneAtomic = -1;
 std::atomic_int countAtomic = 0;
 
 void GenerateVectorOfWords(std::string word, std::vector<std::string>& vector, int size) {
@@ -58,9 +58,9 @@ void WordCount_P(std::string word, const std::vector<std::string>& vector, int t
 		start1 = the_amp_clock::now();
 	}
 
-	//increment elementDone so other threads can do their thing
+	//whilst not all elements have been checked, 
 	while (elementsDone < vector.size()) {
-		elementsDone_mutex.lock();
+		elementsDone_mutex.lock(); 
 		elementsDone++;
 		elementsDone_mutex.unlock();
 
@@ -79,19 +79,26 @@ void WordCount_P_Atomic(std::string word, const std::vector<std::string>& vector
 
 	if (!timerStarted) {
 		timerStarted = true;
-		start1 = the_amp_clock::now();
+		start1 = the_amp_clock::now(); //start timer
 	}
 
-	//increment elementDone so other threads can do their thing
-	while (elementsDoneAtomic < vector.size()) { //not thread safe
-		elementsDoneAtomic++;
-		if (vector[elementsDoneAtomic - 1] == word) { //not thread safe
-			countAtomic++;
+	auto claim_index = []() -> int { //each thread can "claim" some spot in the vector using the value returned by fetch_add
+		return elementsDoneAtomic.fetch_add(1, std::memory_order_seq_cst); //add 1 to element checked counter  //single total order exists in which all threads observe all modifications in the same order with {memory_order_seq_cst}
+	};  // returns the value immediately preceding the effects of this function in the modification order of *this, AKA elementsDoneAtomic + 1
+
+	int claimed_index;
+
+	//whilst not all elements have been checked,
+	while ((claimed_index = claim_index()) < vector.size()) {
+
+		//if a word in the vector is equal to the word we are looking for,
+		if (vector[claimed_index] == word) {
+			countAtomic++; //add 1 to the word count
 		}
 	}
 
-	count = countAtomic;
-	end1 = the_amp_clock::now();
+	end1 = the_amp_clock::now(); //end timer
+	count = countAtomic; //set the count with the atomic count
 }
 
 long long TestNonParallel(int& count, std::string word, int size, const std::vector<std::string>& vector) {
@@ -109,7 +116,6 @@ long long TestParallel(int& count, std::string word, int size, std::vector<std::
 	int elementsDone = 0;
 	std::vector<std::thread> threadVector;
 
-	//the_amp_clock::time_point start = the_amp_clock::now(); ///////////////////////////////////////
 	for (int i = 0; i < threadsNum; i++) {
 		//threadVector.push_back(std::thread(&WordCount_P, word, vector, threadsNum, std::ref(count), std::ref(elementsDone), std::ref(count_mutex), std::ref(elementsDone_mutex)));
 		threadVector.push_back(std::thread(&WordCount_P_Atomic, word, vector, threadsNum, std::ref(count)));
@@ -118,8 +124,6 @@ long long TestParallel(int& count, std::string word, int size, std::vector<std::
 	for (int i = 0; i < threadsNum; i++) {
 		threadVector[i].join();
 	}
-
-	//the_amp_clock::time_point end = the_amp_clock::now();  
 	return duration_cast<milliseconds>(end1 - start1).count(); ///////////////////////////////////////
 }
 
