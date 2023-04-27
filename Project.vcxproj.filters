@@ -21,9 +21,6 @@
     <ClCompile Include="MandelBrot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="QuickSort.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="CountWord.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
