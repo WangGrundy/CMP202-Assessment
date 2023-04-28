@@ -172,7 +172,7 @@ void ShowSummary(const std::string& unit, const std::vector<long long>& nonParal
 	std::cout << "[NON PARALLEL] number of our words is: " << countNonParallel << " and AVERAGE time taken: " << nonParallelTestTimes[medianPlacement] << typeOfUnit << std::endl;
 	std::cout << "[PARALLEL(condition variable)] number of our words is: " << countCV << " and AVERAGE time taken: " << parallelTestTimes_CV[medianPlacement] << typeOfUnit << std::endl;
 	if (!disableBarrierTest) {
-		std::cout << "[PARALLEL(barrier)] number of our words is: " << countBarrier << " and AVERAGE time taken: " << parallelTestTimes_CV[medianPlacement] << typeOfUnit << std::endl << std::endl;
+		std::cout << "[PARALLEL(barrier)] number of our words is: " << countBarrier << " and AVERAGE time taken: " << parallelTestTimes_Barrier[medianPlacement] << typeOfUnit << std::endl << std::endl;
 	}
 	std::cout << "parallel (condition variable) is faster than non parallel by " << nonParallelTestTimes[medianPlacement] - parallelTestTimes_CV[medianPlacement] << typeOfUnit << std::endl;
 	if (!disableBarrierTest) {

@@ -23,6 +23,8 @@ typedef std::chrono::steady_clock the_serial_clock;
 typedef std::chrono::steady_clock the_amp_clock;
 
 bool timerStarted = false;
+the_amp_clock::time_point start_Parallel;
+the_amp_clock::time_point end_Parallel;
 the_amp_clock::time_point end_CV;
 the_amp_clock::time_point start_CV;
 the_amp_clock::time_point end_Barrier;
@@ -44,12 +46,14 @@ std::barrier bigBarrier(5); //number inside brackets should be number of threads
 bool disableBarrierTest = false;
 //manually change this ************************************************************************************************************************************
 
-void WordCount(std::string word, const std::vector<std::string>& vector, int& count) {
-	for (std::string x : vector) { //brute force and search through entire vector (0-size of vector) and the number of custom words added.
+void WordCount(const std::string& word, const std::vector<std::string>& vector, int& count) {
+	start_Parallel = the_amp_clock::now();
+	for (const std::string& x : vector) { //brute force and search through entire vector (0-size of vector) and the number of custom words added.
 		if (x == word) {
 			count++;
 		}
 	}
+	end_Parallel = the_amp_clock::now();
 }
 
 void WordCount_P_Atomic_CV(std::string word, const std::vector<std::string>& vector, int threadTotal, int& count, int threadID, const bool showThreadsWaiting) {
@@ -121,12 +125,8 @@ void WordCount_P_Atomic_Barrier(std::string word, const std::vector<std::string>
 }
 
 long long TestNonParallel(int& count, const std::string& word, const int& sizeOfVector, const std::vector<std::string>& vector, const std::string& unit) {
-	
-	the_amp_clock::time_point start = the_amp_clock::now(); ///////////////////////////////////////
 	WordCount(word, vector, count);
-	the_amp_clock::time_point end = the_amp_clock::now();
-
-	return ReturnUnit(unit, start, end);
+	return ReturnUnit(unit, start_Parallel, end_Parallel);
 }
 
 long long TestParallel_CV(int& count, const std::string& word, const int& sizeOfVector, const std::vector<std::string>& vector, int threadsNum, const bool& showThreadsWaiting, const std::string& unit) {
@@ -222,7 +222,7 @@ void DefaultTest(const bool& showThreadsWaiting, const bool& showEntireArray, co
 	std::vector<long long> parallelTestTimes_CV, parallelTestTimes_Barrier, nonParallelTestTimes;
 
 	//PLEASE CHANGE TO YOUR LIKING ---------------------------------------
-	int threadsNum = cores - 1; //should be equal to number of cores - 1 because it includes main thread (advisory)
+	int threadsNum = 5; // cores - 1; //should be equal to number of cores - 1 because it includes main thread (advisory)
 	std::string word = "hello"; //our word that we will add to the randomly generated vector
 	int chanceOfWordAppearing = 10; //10% chance of word appearing in our randomly generated vector
 	int sizeOfVector = 100000; //the size of how large our vector of words will be to search through
@@ -262,7 +262,7 @@ void AdditionalOptions(bool& showThreadsWaiting, bool& showEntireArray, bool& sh
 	AskQuestion(showFirst10ElementsOfArray, "show first 10 elements of randomly generated array?", "recommendation: no, if you have large arrays and test repetitions (default no)");
 	AskQuestion(testNumber, "Show test number?", "recommendation: depends on how large your test sample is (default yes)");
 	AskQuestion(showTestTimes, "Show ALL test times at the end?", "recommendation: depends on how large your test sample, this will enable you to check for correctness (default no)");
-	AskQuestion("n", "m", unit, "answer shown in miliseconds type (m) or nanoseconds type (n)?", "recommendation: depends on how large array is, if large array maybe m for miliseconds is good enough (default m)");
+	AskQuestion("n", "m", unit, "answer shown in miliseconds type (m) or nanoseconds type (n)?", "recommendation: depends on how large array is, if large array maybe m for miliseconds is good enough (default n)");
 }
 
 int main() {
@@ -276,7 +276,7 @@ int main() {
 	bool showFirst10ElementsOfArray = false; //show first 10 elements of vector
 	bool testNumber = true; //show test number when running
 	bool showTestTimes = false; //show test time array at the end (includes all results)
-	std::string unit = "m"; //"m" for miliseconds or "n" for nanoseconds
+	std::string unit = "n"; //"m" for miliseconds or "n" for nanoseconds
 	//PLEASE CHANGE OPTIONS HERE IF YOU FIND IT EASIER 
 
 	while (true) {
