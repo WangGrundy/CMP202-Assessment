@@ -142,8 +142,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CountWord.cpp" />
-    <ClCompile Include="MandelBrot.cpp" />
     <ClCompile Include="Parallel.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CountWordHelperFunctions.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

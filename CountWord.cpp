@@ -1,3 +1,4 @@
+//Wang Yu Grundy | 2101005 , CMP 203 Data Structures & Algorithms 2 Project (2023)
 #define _SILENCE_AMP_DEPRECATION_WARNINGS
 
 #include <iostream>
@@ -11,7 +12,8 @@
 #include <algorithm>
 #include <condition_variable>
 #include <barrier>
-#include <ctype.h>
+
+#include "CountWordHelperFunctions.h"
 
 using namespace concurrency;
 using std::chrono::duration_cast;
@@ -21,56 +23,28 @@ typedef std::chrono::steady_clock the_serial_clock;
 typedef std::chrono::steady_clock the_amp_clock;
 
 bool timerStarted = false;
-the_amp_clock::time_point end1;
-the_amp_clock::time_point start1;
-std::atomic_int countAtomic = 0;
+the_amp_clock::time_point end_CV;
+the_amp_clock::time_point start_CV;
+the_amp_clock::time_point end_Barrier;
+the_amp_clock::time_point start_Barrier;
+std::atomic_int countAtomic_CV = 0;
+std::atomic_int countAtomic_Barrier = 0;
 std::condition_variable cv;
 std::mutex mutexForTimer;
 int cores = 0;
 bool startTimer = false;
 int parallelTheadCount = 0;
 
-void ManualTest();
-void DefaultTest();
-void AdditionalOptions(bool& showThreadsWaiting, bool& showEntireArray, bool& showFirst10ElementsOfArray, std::string& unit);
-void Help();
+void ManualTest(const bool& showThreadsWaiting, const bool& showEntireArray, const bool& showFirst10ElementsOfArray, const std::string& unit, const bool& testNumber, bool& showTestTimes);
+void DefaultTest(const bool& showThreadsWaiting, const bool& showEntireArray, const bool& showFirst10ElementsOfArray, const std::string& unit, const bool& testNumber, bool& showTestTimes);
+void AdditionalOptions(const bool& showThreadsWaiting, const bool& showEntireArray, const bool& showFirst10ElementsOfArray, const std::string& unit, const bool& testNumber, bool& showTestTimes);
 
-std::barrier bigBarrier(2); //manually change this
-
-std::string GenerateRandomString(int sizeOfWord) {
-	std::string temp;
-
-	char allChars[] =
-		"0123456789"
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-		"abcdefghijklmnopqrstuvwxyz";
-	
-	temp.reserve(sizeOfWord);
-
-	for (int i = 0; i < sizeOfWord; ++i) {
-		temp += allChars[rand() % (sizeof(allChars) - 1)];
-	}
-
-	return temp;
-}
-
-void GenerateVectorOfWords(std::string word, std::vector<std::string>& vector, int sizeOfVector, int sizeOfRandomWords, int chanceOfWordAppearing) {
-	
-	for (int i = 0; i < sizeOfVector; i++) {
-		
-		int randomNum = rand() % chanceOfWordAppearing; //10% chance of our word appearing
-
-		if (randomNum == 1) { //10% chance of our word appearing
-			vector.push_back(word);
-		}
-		else {
-			vector.push_back(GenerateRandomString(sizeOfRandomWords)); //90% chance of random string
-		}
-	}
-}
+//manually change this ************************************************************************************************************************************
+std::barrier bigBarrier(5); //number inside brackets should be number of threads used (default: number of cores - 1) 
+bool disableBarrierTest = false;
+//manually change this ************************************************************************************************************************************
 
 void WordCount(std::string word, const std::vector<std::string>& vector, int& count) {
-	
 	for (std::string x : vector) { //brute force and search through entire vector (0-size of vector) and the number of custom words added.
 		if (x == word) {
 			count++;
@@ -78,18 +52,22 @@ void WordCount(std::string word, const std::vector<std::string>& vector, int& co
 	}
 }
 
-void WordCount_P_Atomic_CV(std::string word, const std::vector<std::string>& vector, int threadTotal, int& count, int threadID) {
+void WordCount_P_Atomic_CV(std::string word, const std::vector<std::string>& vector, int threadTotal, int& count, int threadID, const bool showThreadsWaiting) {
 
 	int threadNumber = threadID + 1;
 	int threadCountTemp = threadNumber;
 	std::unique_lock<std::mutex> uniquelock1(mutexForTimer);
 
 	if (!startTimer) {
-		std::cout << "waiting" << std::endl;
+		if (showThreadsWaiting) {
+			std::cout << "waiting" << std::endl;
+		}
 		parallelTheadCount++;//add 1 to parallel thread counter
-		cv.wait(uniquelock1);
-		start1 = the_amp_clock::now(); //start timer
-		std::cout << "GO" << std::endl;
+		cv.wait(uniquelock1); //wait here for all threads to be ready
+		if (showThreadsWaiting) {
+			std::cout << "GO" << std::endl;
+		}
+		start_CV = the_amp_clock::now(); //start timer
 	}
 
 	//threads that are still stuck
@@ -98,71 +76,67 @@ void WordCount_P_Atomic_CV(std::string word, const std::vector<std::string>& vec
 
 	if (threadNumber == 1) { //account for the 0th element if 1st thread
 		if (vector[0] == word) {
-			countAtomic++;
+			countAtomic_CV++;
 		}
 	}
 
 	while (threadCountTemp < vector.size()) {
 
 		if (vector[threadCountTemp] == word) {
-			countAtomic++;
+			countAtomic_CV++;
 		}
 
 		threadCountTemp += threadTotal;
 	}
 
-	end1 = the_amp_clock::now(); //end timer
-	count = countAtomic; //set the count with the atomic count
+	end_CV = the_amp_clock::now(); //end timer
+	count = countAtomic_CV; //set the count with the atomic count
 }
 
 void WordCount_P_Atomic_Barrier(std::string word, const std::vector<std::string>& vector, int threadTotal, int& count, int threadID) {
-
+	
 	int threadNumber = threadID + 1;
 	int threadCountTemp = threadNumber;
 
-	std::unique_lock<std::mutex> uniquelock1(mutexForTimer);
-
-	the_amp_clock::time_point a = the_amp_clock::now();
 	bigBarrier.arrive_and_wait(); //all threads wait here then start timer.
-	the_amp_clock::time_point b = the_amp_clock::now();
-
-	std::cout << "this thread waited: " << duration_cast<milliseconds>(b - a).count() << std::endl;
+	start_Barrier = the_amp_clock::now(); //start timer
 
 	if (threadNumber == 1) { //account for the 0th element if 1st thread
 		if (vector[0] == word) {
-			countAtomic++;
+			countAtomic_Barrier++;
 		}
 	}
 
 	while (threadCountTemp < vector.size()) {
-
+		
 		if (vector[threadCountTemp] == word) {
-			countAtomic++;
+			countAtomic_Barrier++;
 		}
 
 		threadCountTemp += threadTotal;
 	}
 
-	end1 = the_amp_clock::now(); //end timer
-	count = countAtomic; //set the count with the atomic count
+	end_Barrier = the_amp_clock::now(); //end timer
+	count = countAtomic_Barrier; //set the count with the atomic count
 }
 
-long long TestNonParallel(int& count, std::string word, int sizeOfVector, const std::vector<std::string>& vector) {
+long long TestNonParallel(int& count, const std::string& word, const int& sizeOfVector, const std::vector<std::string>& vector, const std::string& unit) {
 	
 	the_amp_clock::time_point start = the_amp_clock::now(); ///////////////////////////////////////
 	WordCount(word, vector, count);
 	the_amp_clock::time_point end = the_amp_clock::now();
-	return duration_cast<milliseconds>(end - start).count(); ///////////////////////////////////////
+
+	return ReturnUnit(unit, start, end);
 }
 
-long long TestParallel(int& count, std::string word, int sizeOfVector, std::vector<std::string>& vector, int threadsNum) {
+long long TestParallel_CV(int& count, const std::string& word, const int& sizeOfVector, const std::vector<std::string>& vector, int threadsNum, const bool& showThreadsWaiting, const std::string& unit) {
 
 	startTimer = false;
 	std::vector<std::thread> threadVector;
 	parallelTheadCount = 0;
 
 	for (int i = 0; i < threadsNum; i++) { //do work
-		threadVector.push_back(std::thread(&WordCount_P_Atomic_CV, word, vector, threadsNum, std::ref(count), i));
+		threadVector.push_back(std::thread(&WordCount_P_Atomic_CV, word, vector, threadsNum, std::ref(count), i, showThreadsWaiting));
 	}
 	
 	while (parallelTheadCount != threadsNum) { //busy waiting
@@ -176,89 +150,30 @@ long long TestParallel(int& count, std::string word, int sizeOfVector, std::vect
 		threadVector[i].join();
 	}
 
-	return duration_cast<milliseconds>(end1 - start1).count(); ///////////////////////////////////////
+	return ReturnUnit(unit, start_CV, end_CV);
 }
 
-void AskQuestion(int min, int max, int& value, std::string description, std::string recommendation) {
-	
-	std::cout << "-----------------------------------------------------------------------------" << std::endl;
-	while (value < min || value > max) {
+long long TestParallel_Barrier(int& count, const std::string& word, const int& sizeOfVector, const std::vector<std::string>& vector, int threadsNum, const std::string& unit) {
 
-		if (std::cin.fail()) { //if we type in string instead of int, we fail.
-			std::cin.clear(); //clear input buffer
-			std::cin.ignore(1000, '\n'); //input and enterkey gets ignored. ignore/clear characters from the input buffer
-			std::cout << "---------------------------------" << std::endl;
-			std::cout << "Number invalid, please try again. INT only and within VALID ranges" << std::endl << std::endl;
-		}
-		
-		std::cout << "How many " << description << "? (MIN = " << min << " | MAX = " << max << ")" << std::endl;
-		std::cout << recommendation << std::endl;
-		std::cout << "CHOICE: ";
-		std::cin >> value;
+	startTimer = false;
+	std::vector<std::thread> threadVector;
+	parallelTheadCount = 0;
+
+	for (int i = 0; i < threadsNum; i++) { //do work
+		threadVector.push_back(std::thread(&WordCount_P_Atomic_Barrier, word, vector, threadsNum, std::ref(count), i));
 	}
-}
 
-void AskQuestion(std::string& word, std::string description, std::string recommendation) {
-
-	std::cout << "-----------------------------------------------------------------------------" << std::endl;
-	std::cout << "type in your " << description << " to insert into randomly generated vector: " << std::endl;
-	std::cout << recommendation << std::endl;
-	std::cout << "CHOICE: ";
-	std::cin >> word;
-	
-}
-
-void AskQuestion(bool& value, std::string description, std::string recommendation) {
-
-	std::string answer = "";
-
-	std::cout << "-----------------------------------------------------------------------------" << std::endl;
-	while (true) {
-		std::cout << description << std::endl;
-		std::cout << "type 'y' for yes, or 'n' for no" << std::endl << std::endl;
-		std::cout << recommendation << std::endl;
-		std::cout << "CHOICE: ";
-		std::cin >> answer;
-
-		if (answer == "y") {
-			value = true;
-			return;
-		}
-		else if (answer == "n"){
-			value = false;
-			return;
-		}
+	for (int i = 0; i < threadsNum; i++) {
+		threadVector[i].join();
 	}
+
+	return ReturnUnit(unit, start_Barrier, end_Barrier);
 }
 
-void AskQuestion(std::string option1, std::string option2, std::string& value, std::string description, std::string recommendation) {
+void ManualTest(const bool& showThreadsWaiting, const bool& showEntireArray, const bool& showFirst10ElementsOfArray, const std::string& unit, const bool& testNumber, bool& showTestTimes) {
 
-	std::string answer = "";
-
-	std::cout << "-----------------------------------------------------------------------------" << std::endl;
-	while (true) {
-		std::cout << description << std::endl;
-		std::cout << recommendation << std::endl;
-		std::cout << "CHOICE: ";
-		std::cin >> answer;
-
-		if (answer == option1) {
-			value = option1;
-			return;
-		}
-		else if (answer == option2) {
-			value = option2;
-			return;
-		}
-	}
-}
-
-void ManualTest() {
-
-	int count = 0;
-	int count2 = 0;
-	std::vector<std::string> vector;
-	std::vector<long long> parallelTestTimes, nonParallelTestTimes;
+	int countNonParallel = 0, countCV = 0, countBarrier = 0;
+	std::vector<long long> parallelTestTimes_CV, parallelTestTimes_Barrier, nonParallelTestTimes;
 
 	//questions to ask
 	int threadsNum = -1; //should be equal to number of cores - 1 because it includes main thread (advisory)
@@ -269,40 +184,42 @@ void ManualTest() {
 	int testRepetitions = -1; //number of times this test will be repeated
 
 	//ask questions
-	AskQuestion(2, INT_MAX, threadsNum, "threads", "recommendation: number of cpu's you have on your device");
-	AskQuestion(2, INT_MAX, sizeOfVector, "size of vector", "recommendation: 100000 is a good size to test");
-	AskQuestion(2, INT_MAX, sizeOfRandomWords, "length of random words", "recommendation: 5-10, keep it short for faster compile time since its randomly generated");
-	AskQuestion(0, 100, chanceOfWordAppearing, "chance of words appearing", "recommendation: at least 10% for small vectors");
-	AskQuestion(2, INT_MAX, testRepetitions, "test repetitions", "recommendation: if used 100,000 vector word length, 10-20 repetitions should be good");
-	AskQuestion(word, "word", "recommendation: any word is fine");
+	AskQuestion(2, INT_MAX, threadsNum, "threads", "recommendation: number of cpu's you have on your device - 1 (default: cores - 1)");
+	AskQuestion(2, INT_MAX, sizeOfVector, "size of vector", "recommendation: 100,000 is a good size to test  (default: 100000)");
+	AskQuestion(2, INT_MAX, sizeOfRandomWords, "length of random words", "recommendation: 5-20, keep it short for faster compile time since its randomly generated (default: 10)");
+	AskQuestion(0, 100, chanceOfWordAppearing, "chance of words appearing", "recommendation: at least 10% for small vectors (default: 10)");
+	AskQuestion(2, INT_MAX, testRepetitions, "test repetitions", "recommendation: 10-20 repetitions should be good (default: 10)");
+	AskQuestion(word, "word", "recommendation: any word is fine (default: Hello)");
 
-	
 	for (int i = 0; i < testRepetitions; i++) {
+		std::vector<std::string> vector;
+
 		GenerateVectorOfWords(word, vector, sizeOfVector, sizeOfRandomWords, chanceOfWordAppearing); //insert our word randomly into this
-		std::cout << "starting test[ " << i << " ] " << std::endl;
-		nonParallelTestTimes.push_back(TestNonParallel(count, word, sizeOfVector, vector));
-		parallelTestTimes.push_back(TestParallel(count2, word, sizeOfVector, vector, threadsNum));
+		ShowFirst10ElementsOrWhole(showFirst10ElementsOfArray, showEntireArray, vector);
+		ShowTestNumber(testNumber, i);
+		
+		//create threads
+		nonParallelTestTimes.push_back(TestNonParallel(countNonParallel, word, sizeOfVector, vector, unit));
+		parallelTestTimes_CV.push_back(TestParallel_CV(countCV, word, sizeOfVector, vector, threadsNum, showThreadsWaiting, unit));
+		if (!disableBarrierTest) {
+			parallelTestTimes_Barrier.push_back(TestParallel_Barrier(countBarrier, word, sizeOfVector, vector, threadsNum, unit));
+		}
 	}
 
+	//sort test time vectors
 	std::sort(nonParallelTestTimes.begin(), nonParallelTestTimes.end());
-	std::sort(parallelTestTimes.begin(), parallelTestTimes.end());
+	std::sort(parallelTestTimes_CV.begin(), parallelTestTimes_CV.end());
+	if (!disableBarrierTest) {
+		std::sort(parallelTestTimes_Barrier.begin(), parallelTestTimes_Barrier.end());
+	}
 
-	int medianPlacement = (testRepetitions / 2) - 1;
-
-	/*for (long long num : parallelTestTimes) {
-		std::cout << num << std::endl;
-	}*/
-
-	std::cout << "SERIAL: COUNT IS : " << count << " AND TIME TAKEN: " << nonParallelTestTimes[medianPlacement] << "ns" << std::endl;
-	std::cout << "PARALLEL: COUNT IS : " << count2 << " AND TIME TAKEN: " << parallelTestTimes[medianPlacement] << "ns" << std::endl;
-	std::cout << "parallel is faster by " << nonParallelTestTimes[medianPlacement] - parallelTestTimes[medianPlacement] << "ns" << std::endl;
+	ShowTestTimes(showTestTimes, nonParallelTestTimes, parallelTestTimes_CV, parallelTestTimes_Barrier, disableBarrierTest);
+	ShowSummary(unit, nonParallelTestTimes, parallelTestTimes_CV, parallelTestTimes_Barrier, testRepetitions, countNonParallel, countCV, countBarrier, disableBarrierTest);
 }
 
-void DefaultTest() {
-	int count = 0;
-	int count2 = 0;
-	std::vector<std::string> vector;
-	std::vector<long long> parallelTestTimes, nonParallelTestTimes;
+void DefaultTest(const bool& showThreadsWaiting, const bool& showEntireArray, const bool& showFirst10ElementsOfArray, const std::string& unit, const bool& testNumber, bool& showTestTimes) {
+	int countNonParallel = 0, countCV = 0, countBarrier = 0;
+	std::vector<long long> parallelTestTimes_CV, parallelTestTimes_Barrier, nonParallelTestTimes;
 
 	//PLEASE CHANGE TO YOUR LIKING ---------------------------------------
 	int threadsNum = cores - 1; //should be equal to number of cores - 1 because it includes main thread (advisory)
@@ -314,35 +231,38 @@ void DefaultTest() {
 	//PLEASE CHANGE TO YOUR LIKING ---------------------------------------
 
 	for (int i = 0; i < testRepetitions; i++) {
+		std::vector<std::string> vector;
+
 		GenerateVectorOfWords(word, vector, sizeOfVector, sizeOfRandomWords, chanceOfWordAppearing); //insert our word randomly into this
-		std::cout << "starting test[ " << i << " ] " << std::endl;
-		nonParallelTestTimes.push_back(TestNonParallel(count, word, sizeOfVector, vector));
-		parallelTestTimes.push_back(TestParallel(count2, word, sizeOfVector, vector, threadsNum));
+		ShowFirst10ElementsOrWhole(showFirst10ElementsOfArray, showEntireArray, vector);
+		ShowTestNumber(testNumber, i);
+
+		//create threads
+		nonParallelTestTimes.push_back(TestNonParallel(countNonParallel, word, sizeOfVector, vector, unit));
+		parallelTestTimes_CV.push_back(TestParallel_CV(countCV, word, sizeOfVector, vector, threadsNum, showThreadsWaiting, unit));
+		if (!disableBarrierTest) {
+			parallelTestTimes_Barrier.push_back(TestParallel_Barrier(countBarrier, word, sizeOfVector, vector, threadsNum, unit));
+		}
 	}
 
+	//sort test time vectors
 	std::sort(nonParallelTestTimes.begin(), nonParallelTestTimes.end());
-	std::sort(parallelTestTimes.begin(), parallelTestTimes.end());
-
-	int medianPlacement = (testRepetitions / 2) - 1;
-
-	/*for (long long num : parallelTestTimes) {
-		std::cout << num << std::endl;
-	}*/
-
-	std::cout << "SERIAL: COUNT IS : " << count << " AND TIME TAKEN: " << nonParallelTestTimes[medianPlacement] << "ns" << std::endl;
-	std::cout << "PARALLEL: COUNT IS : " << count2 << " AND TIME TAKEN: " << parallelTestTimes[medianPlacement] << "ns" << std::endl;
-	std::cout << "parallel is faster by " << nonParallelTestTimes[medianPlacement] - parallelTestTimes[medianPlacement] << "ns" << std::endl;
+	std::sort(parallelTestTimes_CV.begin(), parallelTestTimes_CV.end());
+	if (!disableBarrierTest) {
+		std::sort(parallelTestTimes_Barrier.begin(), parallelTestTimes_Barrier.end());
+	}
+	
+	ShowTestTimes(showTestTimes, nonParallelTestTimes, parallelTestTimes_CV, parallelTestTimes_Barrier, disableBarrierTest);
+	ShowSummary(unit, nonParallelTestTimes, parallelTestTimes_CV, parallelTestTimes_Barrier, testRepetitions, countNonParallel, countCV, countBarrier, disableBarrierTest);
 }
 
-void AdditionalOptions(bool& showThreadsWaiting, bool& showEntireArray, bool& showFirst10ElementsOfArray, std::string& unit) {
+void AdditionalOptions(bool& showThreadsWaiting, bool& showEntireArray, bool& showFirst10ElementsOfArray, std::string& unit, bool& testNumber, bool& showTestTimes) {
 	AskQuestion(showThreadsWaiting, "show threads waiting?", "recommendation: say no if you have a super large number of threads (default no)");
 	AskQuestion(showEntireArray, "show entire generated array?", "recommendation: no, if you have large arrays and test repetitions (default no)");
 	AskQuestion(showFirst10ElementsOfArray, "show first 10 elements of randomly generated array?", "recommendation: no, if you have large arrays and test repetitions (default no)");
-	AskQuestion("n", "m", unit, "answer shown in miliseconds type (m) or nanoseconds type (n)?", "recommendation: depends on how large array is, if large array maybe m for miliseconds is good enough");
-}
-
-void Help() {
-
+	AskQuestion(testNumber, "Show test number?", "recommendation: depends on how large your test sample is (default yes)");
+	AskQuestion(showTestTimes, "Show ALL test times at the end?", "recommendation: depends on how large your test sample, this will enable you to check for correctness (default no)");
+	AskQuestion("n", "m", unit, "answer shown in miliseconds type (m) or nanoseconds type (n)?", "recommendation: depends on how large array is, if large array maybe m for miliseconds is good enough (default m)");
 }
 
 int main() {
@@ -351,10 +271,12 @@ int main() {
 	std::cout << "number of cores: " << cores << std::endl;
 
 	//PLEASE CHANGE OPTIONS HERE IF YOU FIND IT EASIER 
-	bool showThreadsWaiting = false;
-	bool showEntireArray = false;
-	bool showFirst10ElementsOfArray = false;
-	std::string unit = "n"; //"m" for miliseconds or "n" for nanoseconds
+	bool showThreadsWaiting = false; //show threads waiting for condition variable test
+	bool showEntireArray = false; //show entire vector
+	bool showFirst10ElementsOfArray = false; //show first 10 elements of vector
+	bool testNumber = true; //show test number when running
+	bool showTestTimes = false; //show test time array at the end (includes all results)
+	std::string unit = "m"; //"m" for miliseconds or "n" for nanoseconds
 	//PLEASE CHANGE OPTIONS HERE IF YOU FIND IT EASIER 
 
 	while (true) {
@@ -381,13 +303,13 @@ int main() {
 
 		switch (optionNumber) {
 		case 1:
-			ManualTest();
+			ManualTest(showThreadsWaiting, showEntireArray, showFirst10ElementsOfArray, unit, testNumber, showTestTimes);
 			break;
 		case 2:
-			DefaultTest();
+			DefaultTest(showThreadsWaiting, showEntireArray, showFirst10ElementsOfArray, unit, testNumber, showTestTimes);
 			break;
 		case 3:
-			AdditionalOptions(showThreadsWaiting, showEntireArray, showFirst10ElementsOfArray, unit);
+			AdditionalOptions(showThreadsWaiting, showEntireArray, showFirst10ElementsOfArray, unit, testNumber, showTestTimes);
 			break;
 		case 4:
 			Help();
@@ -398,12 +320,4 @@ int main() {
 			std::cout << "something went wrong" << std::endl;
 		}
 	}
-
-	/*for (std::string word : vector) {
-		std::cout << word << std::endl;
-	}*/
-
-	/*for (long long num : parallelTestTimes) {
-		std::cout << num << std::endl;
-	}*/
 }
